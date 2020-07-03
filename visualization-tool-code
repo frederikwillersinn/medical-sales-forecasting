@@ -1,0 +1,622 @@
+# Note: The CSV files with the forecasts for every product group and cluster need to be merged into one file 'Results-Total.csv' in a first step
+
+from tkinter import *
+from tkinter import ttk
+import pandas as pd
+from pandas.plotting import register_matplotlib_converters
+from matplotlib.figure import Figure
+from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
+from datetime import datetime
+import re
+import os
+import sys
+import numpy as np
+
+register_matplotlib_converters()
+pd.set_option('display.max_columns', 1000, 'display.max_rows', 1000, 'display.width', None)
+
+# Define relevant functions
+def atoi(text):
+    return int(text) if text.isdigit() else text
+
+
+def naturalSort(text):
+    return [atoi(c) for c in re.split(r'(\d+)', text)]
+
+
+def restart():
+    python = sys.executable
+    os.execl(python, python, *sys.argv)
+
+
+def notification1(value):
+    Label(right, text='\n\n\n\n\n\n\n\n\n\n\n\n\n\nNo visualization available', fg='red').pack()
+    Label(right, text='Visualizations are available only for time series with more than 10 '
+                      'observations.\nThe requested time series has only {0} observations.'.format(len(value))).pack()
+
+
+def notification2():
+    Label(right, text='\n\n\n\n\n\n\n\n\n\n\n\n\n\nNo visualization available', fg='red').pack()
+    Label(right, text='Visualizations are available only for individual time series,\nfor single pharmacies, products, '
+                      'brands or strenghts,\nand for the entire database.').pack()
+
+
+def notification3():
+    Label(right, text='\n\n\n\n\n\n\n\n\n\n\n\n\n\nNo visualization available', fg='red').pack()
+    Label(right, text='Visualizations are available only for time series with more than 10 '
+                      'observations.\nBoth requested time series have less observations.').pack()
+
+
+def figure(value, title):
+    Label(right, text='\n').pack()
+    fig = Figure(figsize=(10, 6), dpi=80, facecolor='white')
+    axis = fig.add_subplot()
+    axis.set_title(title, fontsize=12)
+    axis.plot(value['Date'], value['Quantity'])
+    # Prediction only for weeks after training test split
+    if dateHighlight in list(value['Date']) or dateHighlight < value['Date'][0]:
+        axis.plot(value['Date'].loc[value['Date'] >= date],
+                  value['Prediction'].loc[value['Date'] >= date])
+        axis.legend(['Actual', 'Predicted'], loc=1, prop={'size': 10})
+    if dateHighlight in list(value['Date']):
+        axis.axvline(dateHighlight, color='black')  # Train test split only if in the data
+    axis.set_xlabel('Time', fontsize=12), axis.set_ylabel('Quantity', fontsize=12)
+    FigureCanvasTkAgg(fig, master=right)._tkcanvas.pack()
+
+    def saveFigure():
+        fig.savefig('Figure_1')
+        Label(right, text='Figure saved successfully', fg='green').pack()
+
+    Label(right, text='\n').pack()
+    Button(right, text='Save Figure', command=saveFigure, padx=43).pack()
+
+
+# Load the dataset
+dataframe = pd.read_csv('Results-Total.csv')
+dataframe = dataframe.dropna(subset=['Pharmacy', 'Product', 'Brand', 'Strength'])
+dataframe = dataframe.drop('Unnamed: 0', axis=1)
+dataframe['Date'] = pd.to_datetime(dataframe['Date'])
+
+# Specify the date between training and test set
+date = '2019-01-13'  # Train test split in 2019-01-13
+dateHighlight = datetime.strptime(date, '%Y-%m-%d').date()
+
+# Start the Tool
+root = Tk()
+root.title('Visualization Tool')
+root.geometry('1280x700')
+
+left = Frame(root, borderwidth=1, relief='solid')
+right = Frame(root, borderwidth=1, relief='solid')
+
+Label(left, text='Welcome!\n').pack()
+
+Button(left, text='Restart', command=restart, padx=43).pack()
+Button(left, text='Cancel', padx=43, command=quit).pack()
+
+Label(left, text='\n1. Do you want to analyze one time series or compare two time series?').pack()
+
+output = StringVar()
+output.set('Analyze one time series')
+
+buttonOne = Radiobutton(left, text='Analyze one time series', variable=output, value='One time series selected')
+buttonOne.pack()
+buttonMultiple = Radiobutton(left, text='Compare two time series', variable=output, value='Two time series selected')
+buttonMultiple.pack()
+
+
+def clicked():
+    # Disable buttons after click
+    buttonOne.config(state='disabled')
+    buttonMultiple.config(state='disabled')
+    confirm1.config(state='disabled')
+    Label(left, text=output.get(), fg='green').pack()
+    if output.get() == 'One time series selected':
+        Label(left, text='\n2. Please select a Pharmacy').pack()
+        options = list(dataframe['Pharmacy'].unique())
+        options.sort(key=naturalSort)
+        if len(options) > 1:
+            options = ['Select all'] + options
+
+        selectedPharmacy = StringVar()
+        selectedPharmacy.set(options[0])
+
+        dropDown2 = ttk.Combobox(left, textvariable=selectedPharmacy, values=options, state='readonly')
+        dropDown2.config(width=45, justify='center')
+        dropDown2.pack()
+
+        def confirmPharmacy():
+            # Disable buttons after click
+            dropDown2.config(state='disabled')
+            confirm2.config(state='disabled')
+            dataframe = pd.read_csv('Results-Total.csv')
+            dataframe = dataframe.dropna(subset=['Pharmacy', 'Product', 'Brand', 'Strength'])
+            if selectedPharmacy.get() == 'Select all':
+                Label(left, text='All pharmacies selected', fg='green').pack()
+            else:
+                Label(left, text='Pharmacy selected', fg='green').pack()
+                dataframe = dataframe.loc[(dataframe['Pharmacy'] == selectedPharmacy.get())]
+
+            # Product
+            Label(left, text='\n3. Please select a Product').pack()
+            options = list(dataframe['Product'].unique())
+            options = [str(i) for i in options]
+            options.sort()
+            if len(options) > 1:
+                options = ['Select all'] + options
+
+            selectedProduct = StringVar()
+            selectedProduct.set(options[0])
+
+            dropDown3 = ttk.Combobox(left, textvariable=selectedProduct, values=options, state='readonly')
+            dropDown3.config(width=45, justify='center')
+            dropDown3.pack()
+
+            def confirmProduct():
+                # Disable buttons after click
+                dropDown3.config(state='disabled')
+                confirm3.config(state='disabled')
+                dataframe = pd.read_csv('Results-Total.csv')
+                dataframe = dataframe.dropna(subset=['Pharmacy', 'Product', 'Brand', 'Strength'])
+                if selectedProduct.get() == 'Select all':
+                    Label(left, text='All products selected', fg='green').pack()
+                    if selectedPharmacy.get() == 'Select all':
+                        dataframe = dataframe
+                    else:
+                        dataframe = dataframe.loc[(dataframe['Pharmacy'] == selectedPharmacy.get())]
+                else:
+                    Label(left, text='Product selected', fg='green').pack()
+                    dataframe = dataframe.loc[(dataframe['Product'] == selectedProduct.get())]
+                    if selectedPharmacy.get() == 'Select all':
+                        dataframe = dataframe
+                    else:
+                        dataframe = dataframe.loc[(dataframe['Pharmacy'] == selectedPharmacy.get())]
+
+                # Brand
+                Label(left, text='\n4. Please select a Brand').pack()
+                options = list(dataframe['Brand'].unique())
+                options = [str(i) for i in options]
+                options.sort()
+                if len(options) > 1:
+                    options = ['Select all'] + options
+
+                selectedBrand = StringVar()
+                selectedBrand.set(options[0])
+
+                dropDown4 = ttk.Combobox(left, textvariable=selectedBrand, values=options, state='readonly')
+                dropDown4.config(width=45, justify='center')
+                dropDown4.pack()
+
+                def confirmBrand():
+                    # Disable buttons after click
+                    dropDown4.config(state='disabled')
+                    confirm4.config(state='disabled')
+                    dataframe = pd.read_csv('Results-Total.csv')
+                    dataframe = dataframe.dropna(subset=['Pharmacy', 'Product', 'Brand', 'Strength'])
+                    if selectedBrand.get() == 'Select all':
+                        Label(left, text='All brands selected', fg='green').pack()
+                        if selectedPharmacy.get() == 'Select all':
+                            dataframe = dataframe
+                            if selectedProduct.get() == 'Select all':
+                                dataframe = dataframe
+                            else:
+                                dataframe = dataframe.loc[(dataframe['Product'] == selectedProduct.get())]
+                        else:
+                            dataframe = dataframe.loc[(dataframe['Pharmacy'] == selectedPharmacy.get())]
+                            if selectedProduct.get() == 'Select all':
+                                dataframe = dataframe
+                            else:
+                                dataframe = dataframe.loc[(dataframe['Product'] == selectedProduct.get())]
+                    else:
+                        Label(left, text='Brand selected', fg='green').pack()
+                        dataframe = dataframe.loc[(dataframe['Brand'] == selectedBrand.get())]
+                        if selectedPharmacy.get() == 'Select all':
+                            dataframe = dataframe
+                            if selectedProduct.get() == 'Select all':
+                                dataframe = dataframe
+                            else:
+                                dataframe = dataframe.loc[(dataframe['Product'] == selectedProduct.get())]
+                        else:
+                            dataframe = dataframe.loc[(dataframe['Pharmacy'] == selectedPharmacy.get())]
+                            if selectedProduct.get() == 'Select all':
+                                dataframe = dataframe
+                            else:
+                                dataframe = dataframe.loc[(dataframe['Product'] == selectedProduct.get())]
+
+                    # Strength
+                    Label(left, text='\n5. Please select a Strength').pack()
+                    options = list(dataframe['Strength'].unique())
+                    options = [str(i) for i in options]
+                    options.sort(key=naturalSort)
+
+                    if len(options) > 1:
+                        options = ['Select all'] + options
+
+                    selectedStrength = StringVar()
+                    selectedStrength.set(options[0])
+
+                    dropDown5 = ttk.Combobox(left, textvariable=selectedStrength, values=options, state='readonly')
+                    dropDown5.config(width=45, justify='center')
+                    dropDown5.pack()
+
+                    def confirmStrength():
+                        # Disable buttons after click
+                        dropDown5.config(state='disabled')
+                        confirm5.config(state='disabled')
+                        dataframe = pd.read_csv('Results-Total.csv')
+                        dataframe = dataframe.dropna(subset=['Pharmacy', 'Product', 'Brand', 'Strength'])
+                        if selectedStrength.get() == 'Select all':
+                            Label(left, text='All strengths selected', fg='green').pack()
+                            if selectedPharmacy.get() == 'Select all':
+                                dataframe = dataframe
+                                if selectedProduct.get() == 'Select all':
+                                    dataframe = dataframe
+                                    if selectedBrand.get() == 'Select all':
+                                        dataframe = dataframe
+                                    else:
+                                        dataframe = dataframe.loc[(dataframe['Brand'] == selectedBrand.get())]
+                                else:
+                                    dataframe = dataframe.loc[(dataframe['Product'] == selectedProduct.get())]
+                                    if selectedBrand.get() == 'Select all':
+                                        dataframe = dataframe
+                                    else:
+                                        dataframe = dataframe.loc[(dataframe['Brand'] == selectedBrand.get())]
+                            else:
+                                dataframe = dataframe.loc[(dataframe['Pharmacy'] == selectedPharmacy.get())]
+                                if selectedProduct.get() == 'Select all':
+                                    dataframe = dataframe
+                                    if selectedBrand.get() == 'Select all':
+                                        dataframe = dataframe
+                                    else:
+                                        dataframe = dataframe.loc[(dataframe['Brand'] == selectedBrand.get())]
+                                else:
+                                    dataframe = dataframe.loc[(dataframe['Product'] == selectedProduct.get())]
+                                    if selectedBrand.get() == 'Select all':
+                                        dataframe = dataframe
+                                    else:
+                                        dataframe = dataframe.loc[(dataframe['Brand'] == selectedBrand.get())]
+                        else:
+                            Label(left, text='Strength selected', fg='green').pack()
+                            dataframe = dataframe.loc[(dataframe['Strength'] == selectedStrength.get())]
+                            if selectedPharmacy.get() == 'Select all':
+                                dataframe = dataframe
+                                if selectedProduct.get() == 'Select all':
+                                    dataframe = dataframe
+                                    if selectedBrand.get() == 'Select all':
+                                        dataframe = dataframe
+                                    else:
+                                        dataframe = dataframe.loc[(dataframe['Brand'] == selectedBrand.get())]
+                                else:
+                                    dataframe = dataframe.loc[(dataframe['Product'] == selectedProduct.get())]
+                                    if selectedBrand.get() == 'Select all':
+                                        dataframe = dataframe
+                                    else:
+                                        dataframe = dataframe.loc[(dataframe['Brand'] == selectedBrand.get())]
+                            else:
+                                dataframe = dataframe.loc[(dataframe['Pharmacy'] == selectedPharmacy.get())]
+                                if selectedProduct.get() == 'Select all':
+                                    dataframe = dataframe
+                                    if selectedBrand.get() == 'Select all':
+                                        dataframe = dataframe
+                                    else:
+                                        dataframe = dataframe.loc[(dataframe['Brand'] == selectedBrand.get())]
+                                else:
+                                    dataframe = dataframe.loc[(dataframe['Product'] == selectedProduct.get())]
+                                    if selectedBrand.get() == 'Select all':
+                                        dataframe = dataframe
+                                    else:
+                                        dataframe = dataframe.loc[(dataframe['Brand'] == selectedBrand.get())]
+                        dataframe = dataframe.drop('Unnamed: 0', axis=1).reset_index(drop=True)
+                        dates = dataframe.Year * 100 + dataframe.Week
+                        dataframe['Date'] = pd.to_datetime(dates.astype(str) + '0', format='%Y%W%w')
+
+                        # Visualization: Individual time series
+                        if dataframe['Pharmacy'].nunique() == 1 and dataframe['Product'].nunique() == 1 and \
+                                dataframe['Brand'].nunique() == 1 and dataframe['Strength'].nunique() == 1:
+
+                            print('\nTotal sales quantity over time ({0}, Product {1}, Brand {2}, Strength {3}):'
+                                  .format(dataframe['Pharmacy'][0], dataframe['Product'][0], dataframe['Brand'][0],
+                                          dataframe['Strength'][0]))
+                            print(dataframe)
+
+                            if len(dataframe) > 10:
+                                if len('Total sales quantity over time:\n{0}, Product {1}, Brand {2}, Strength {3}\n'
+                                               .format(dataframe['Pharmacy'][0], dataframe['Product'][0],
+                                                       dataframe['Brand'][0], dataframe['Strength'][0])) > 120:
+                                    figure(dataframe,
+                                           'Total sales quantity over time:\n{0}, Product {1},\nBrand {2}, Strength {3}\n'
+                                           .format(dataframe['Pharmacy'][0], dataframe['Product'][0],
+                                                   dataframe['Brand'][0], dataframe['Strength'][0]))
+                                else:
+                                    figure(dataframe,
+                                           'Total sales quantity over time:\n{0}, Product {1}, Brand {2}, Strength {3}\n'
+                                           .format(dataframe['Pharmacy'][0], dataframe['Product'][0],
+                                                   dataframe['Brand'][0], dataframe['Strength'][0]))
+
+                            else:
+                                notification1(dataframe)
+
+                        # Visualization: Total sales quantity
+                        elif dataframe['Pharmacy'].nunique() > 1 and dataframe['Product'].nunique() > 1 and \
+                                dataframe['Brand'].nunique() > 1 and dataframe['Strength'].nunique() > 1:
+
+                            dataframe = dataframe.groupby(['Year', 'Week'])[
+                                'Quantity', 'Prediction'].sum().reset_index()
+
+                            dates = dataframe['Year'] * 100 + dataframe['Week']
+                            dataframe['Date'] = pd.to_datetime(dates.astype(str) + '0', format='%Y%W%w')
+
+                            print('\nTotal sales quantity over time:')
+                            print(dataframe)
+
+                            figure(dataframe, 'Total sales quantity over time\n')
+
+                        # Visualization: One pharmacy
+                        elif dataframe['Pharmacy'].nunique() == 1:
+                            dataframe = dataframe.groupby(['Pharmacy', 'Year', 'Week'])[
+                                'Quantity', 'Prediction'].sum().reset_index()
+
+                            dates = dataframe['Year'] * 100 + dataframe['Week']
+                            dataframe['Date'] = pd.to_datetime(dates.astype(str) + '0', format='%Y%W%w')
+
+                            # Make the time series start with the first week with sales records
+                            dataframe['Quantity'] = dataframe['Quantity'].replace(0, np.nan)
+                            dataframe = dataframe.loc[dataframe['Quantity'].first_valid_index():
+                                                      dataframe['Quantity'].last_valid_index()].reset_index(drop=True)
+                            dataframe['Quantity'] = dataframe['Quantity'].replace(np.nan, 0)
+                            dataframe['Quantity'] = dataframe['Quantity'].astype('int32')  # Quantity to integer
+
+                            print('\nTotal sales quantity over time ({}):'.format(dataframe['Pharmacy'][0]))
+                            print(dataframe)
+
+                            if len(dataframe) > 10:
+                                figure(dataframe, '\nTotal sales quantity over time:\n{}\n'.format(
+                                    dataframe['Pharmacy'][0]))
+
+                            else:
+                                notification1(dataframe)
+
+                        # Visualization: One product
+                        elif dataframe['Product'].nunique() == 1:
+                            dataframe = dataframe.groupby(['Product', 'Year', 'Week'])[
+                                'Quantity', 'Prediction'].sum().reset_index()
+
+                            dates = dataframe['Year'] * 100 + dataframe['Week']
+                            dataframe['Date'] = pd.to_datetime(dates.astype(str) + '0', format='%Y%W%w')
+
+                            # Make the time series start with the first week with sales records
+                            dataframe['Quantity'] = dataframe['Quantity'].replace(0, np.nan)
+                            dataframe = dataframe.loc[dataframe['Quantity'].first_valid_index():
+                                                      dataframe['Quantity'].last_valid_index()].reset_index(drop=True)
+                            dataframe['Quantity'] = dataframe['Quantity'].replace(np.nan, 0)
+                            dataframe['Quantity'] = dataframe['Quantity'].astype('int32')  # Quantity to integer
+
+                            print('\nTotal sales quantity over time (Product {}):'.format(dataframe['Product'][0]))
+                            print(dataframe)
+
+                            if len(dataframe) > 10:
+                                figure(dataframe, '\nTotal sales quantity over time:\nProduct {}\n'.format(
+                                    dataframe['Product'][0]))
+                            else:
+                                notification1(dataframe)
+
+                        # Visualization: One brand
+                        elif dataframe['Brand'].nunique() == 1:
+                            dataframe = dataframe.groupby(['Brand', 'Year', 'Week'])[
+                                'Quantity', 'Prediction'].sum().reset_index()
+
+                            dates = dataframe['Year'] * 100 + dataframe['Week']
+                            dataframe['Date'] = pd.to_datetime(dates.astype(str) + '0', format='%Y%W%w')
+
+                            # Make the time series start with the first week with sales records
+                            dataframe['Quantity'] = dataframe['Quantity'].replace(0, np.nan)
+                            dataframe = dataframe.loc[dataframe['Quantity'].first_valid_index():
+                                                      dataframe['Quantity'].last_valid_index()].reset_index(drop=True)
+                            dataframe['Quantity'] = dataframe['Quantity'].replace(np.nan, 0)
+                            dataframe['Quantity'] = dataframe['Quantity'].astype('int32')  # Quantity to integer
+
+                            print('\nTotal sales quantity over time (Brand {}):'.format(dataframe['Brand'][0]))
+                            print(dataframe)
+
+                            if len(dataframe) > 10:
+                                figure(dataframe, '\nTotal sales quantity over time:\nBrand {}\n'.format(
+                                    dataframe['Brand'][0]))
+                            else:
+                                notification1(dataframe)
+
+                        # Visualization: One strength
+                        elif dataframe['Strength'].nunique() <= 1:
+                            dataframe = dataframe.groupby(['Strength', 'Year', 'Week'])[
+                                'Quantity', 'Prediction'].sum().reset_index()
+
+                            dates = dataframe['Year'] * 100 + dataframe['Week']
+                            dataframe['Date'] = pd.to_datetime(dates.astype(str) + '0', format='%Y%W%w')
+
+                            # Make the time series start with the first week with sales records
+                            dataframe['Quantity'] = dataframe['Quantity'].replace(0, np.nan)
+                            dataframe = dataframe.loc[dataframe['Quantity'].first_valid_index():
+                                                      dataframe['Quantity'].last_valid_index()].reset_index(drop=True)
+                            dataframe['Quantity'] = dataframe['Quantity'].replace(np.nan, 0)
+                            dataframe['Quantity'] = dataframe['Quantity'].astype('int32')  # Quantity to integer
+
+                            print('\nTotal sales quantity over time (Strength {}):'.format(dataframe['Strength'][0]))
+                            print(dataframe)
+
+                            if len(dataframe) > 10:
+                                figure(dataframe, '\nTotal sales quantity over time:\nStrength {}\n'.format(
+                                    dataframe['Strength'][0]))
+                            else:
+                                notification1(dataframe)
+
+                        else:
+                            notification2()
+
+                    confirm5 = Button(left, text='Confirm', padx=40, command=confirmStrength)
+                    confirm5.pack()
+
+                confirm4 = Button(left, text='Confirm', padx=40, command=confirmBrand)
+                confirm4.pack()
+
+            confirm3 = Button(left, text='Confirm', padx=40, command=confirmProduct)
+            confirm3.pack()
+
+        confirm2 = Button(left, text='Confirm', padx=40, command=confirmPharmacy)
+        confirm2.pack()
+
+    else:
+        Label(left, text='\n\n\n2. What do you want to compare?').pack()
+
+        output2 = StringVar()
+        output2.set('Pharmacy')
+
+        radiobuttonPharmacy = Radiobutton(left, text='Pharmacy', variable=output2, value='Pharmacy')
+        radiobuttonPharmacy.pack()
+        radiobuttonProduct = Radiobutton(left, text='Product', variable=output2, value='Product')
+        radiobuttonProduct.pack()
+        radiobuttonBrand = Radiobutton(left, text='Brand', variable=output2, value='Brand')
+        radiobuttonBrand.pack()
+        radiobuttonStrength = Radiobutton(left, text='Strength', variable=output2, value='Strength')
+        radiobuttonStrength.pack()
+
+        def confirmItem():
+            # Disable buttons after click
+            radiobuttonPharmacy.config(state='disabled')
+            radiobuttonProduct.config(state='disabled')
+            radiobuttonBrand.config(state='disabled')
+            radiobuttonStrength.config(state='disabled')
+            confirm6.config(state='disabled')
+            Label(left, text='{0} selected'.format(output2.get()), fg='green').pack()
+
+            if output2.get() == 'Pharmacy':
+                Label(left, text='\n\n\n3. Which Pharmacies do you want to compare?').pack()
+            else:
+                Label(left, text='\n\n\n3. Which {0}s do you want to compare?'.format(output2.get())).pack()
+
+            Item1 = list(dataframe[output2.get()].unique())
+            Item1 = [str(i) for i in Item1]
+            Item1.sort(key=naturalSort)
+
+            selectedItem1 = StringVar()
+            selectedItem1.set(Item1[0])
+
+            dropDown6 = ttk.Combobox(left, textvariable=selectedItem1, values=Item1, state='readonly')
+            dropDown6.config(width=45, justify='center')
+            dropDown6.pack()
+
+            Item2 = list(dataframe[output2.get()].unique())
+            Item2 = [str(i) for i in Item2]
+            Item2.sort(key=naturalSort)
+
+            selectedItem2 = StringVar()
+            selectedItem2.set(Item2[0])
+
+            dropDown7 = ttk.Combobox(left, textvariable=selectedItem2, values=Item2, state='readonly')
+            dropDown7.config(width=45, justify='center')
+            dropDown7.pack()
+
+            def confirmTimeSeries():
+                # Disable buttons after click
+                dropDown6.config(state='disabled')
+                dropDown7.config(state='disabled')
+                confirm7.config(state='disabled')
+                dataframe = pd.read_csv('Results-Total.csv')
+                dataframe = dataframe.dropna(subset=['Pharmacy', 'Product', 'Brand', 'Strength'])
+                dataframe = dataframe.drop('Unnamed: 0', axis=1)
+                dataframe['Date'] = pd.to_datetime(dataframe['Date'])
+
+                Item1 = dataframe.loc[dataframe[output2.get()] == selectedItem1.get()]
+                Item1 = Item1.groupby([output2.get(), 'Year', 'Week'])['Quantity', 'Prediction'].sum().reset_index()
+                dates = Item1['Year'] * 100 + Item1['Week']
+                Item1['Date'] = pd.to_datetime(dates.astype(str) + '0', format='%Y%W%w')
+                # Make the time series of Item 1 start with the first week with sales records
+                Item1['Quantity'] = Item1['Quantity'].replace(0, np.nan)
+                Item1 = Item1.loc[Item1['Quantity'].first_valid_index():Item1['Quantity'].last_valid_index()]
+                Item1['Quantity'] = Item1['Quantity'].replace(np.nan, 0)
+                Item1['Quantity'] = Item1['Quantity'].astype('int32')  # Quantity to integer
+
+                Item2 = dataframe.loc[dataframe[output2.get()] == selectedItem2.get()]
+                Item2 = Item2.groupby([output2.get(), 'Year', 'Week'])['Quantity', 'Prediction'].sum().reset_index()
+                dates = Item2['Year'] * 100 + Item2['Week']
+                Item2['Date'] = pd.to_datetime(dates.astype(str) + '0', format='%Y%W%w')
+                # Make the time series of Item 1 start with the first week with sales records
+                Item2['Quantity'] = Item2['Quantity'].replace(0, np.nan)
+                Item2 = Item2.loc[Item2['Quantity'].first_valid_index():Item2['Quantity'].last_valid_index()]
+                Item2['Quantity'] = Item2['Quantity'].replace(np.nan, 0)
+                Item2['Quantity'] = Item2['Quantity'].astype('int32')  # Quantity to integer
+
+                if selectedItem1.get() != selectedItem2.get():
+                    Label(left, text='Items selected', fg='green').pack()
+
+                    # Integrate the plot into the Tool
+                    if len(Item1) > 5 or len(Item2) > 5:
+                        Label(right, text='\n').pack()
+                        fig = Figure(figsize=(10, 6), dpi=80, facecolor='white')
+                        axis = fig.add_subplot()
+                        if output2.get() == 'Pharmacy':
+                            axis.set_title('\n\nTotal sales quantity over time:\n{0} vs. {1}\n'.
+                                           format(selectedItem1.get(), selectedItem2.get()), fontsize=12)
+
+                            print('\nTime series for {}:'.format(selectedItem1.get()))
+                            print(Item1)
+                            print('\nTime series for {}:'.format(selectedItem2.get()))
+                            print(Item2)
+
+                        else:
+                            if len('\n\nTotal sales quantity over time:\n{0} {1} vs. {2} {3}\n'.
+                                           format(output2.get(), selectedItem1.get(), output2.get(),
+                                                  selectedItem2.get())) > 140:
+                                axis.set_title('\nTotal sales quantity over time:\n{0} vs.\n{1}'.
+                                               format(selectedItem1.get(), selectedItem2.get()), fontsize=12)
+                            else:
+                                axis.set_title('\n\nTotal sales quantity over time:\n{0} vs. {1}\n'.
+                                               format(selectedItem1.get(), selectedItem2.get()), fontsize=12)
+
+                                print('\nTime series for {0} {1}:'.format(output2.get(), selectedItem1.get()))
+                                print(Item1)
+                                print('\nTime series for {0} {1}:'.format(output2.get(), selectedItem2.get()))
+                                print(Item2)
+
+                        axis.plot(Item1['Date'], Item1['Quantity'])
+                        axis.plot(Item2['Date'], Item2['Quantity'])
+                        axis.legend([selectedItem1.get(), selectedItem2.get()], loc=1, prop={'size': 10})
+                        axis.set_xlabel('Time', fontsize=12), axis.set_ylabel('Quantity', fontsize=12)
+                        FigureCanvasTkAgg(fig, master=right)._tkcanvas.pack()
+
+                        def saveFigure():
+                            fig.savefig('Figure_1')
+                            Label(right, text='Figure saved successfully', fg='green').pack()
+
+                        Label(right, text='\n').pack()
+                        Button(right, text='Save Figure', command=saveFigure, padx=43).pack()
+
+                    else:
+                        notification3()
+
+                        if output2.get() == 'Pharmacy':
+                            print('\nTime series for {}:'.format(selectedItem1.get()))
+                            print(Item1)
+                            print('\nTime series for {}:'.format(selectedItem2.get()))
+                            print(Item2)
+                        else:
+                            print('\nTime series for {0} {1}:'.format(output2.get(), selectedItem1.get()))
+                            print(Item1)
+                            print('\nTime series for {0} {1}:'.format(output2.get(), selectedItem2.get()))
+                            print(Item2)
+
+                else:
+                    Label(left, text='Please click Restart and select two different items', fg='red').pack()
+
+            confirm7 = Button(left, text='Confirm', padx=40, command=confirmTimeSeries)
+            confirm7.pack()
+
+        confirm6 = Button(left, text='Confirm', padx=40, command=confirmItem)
+        confirm6.pack()
+
+
+confirm1 = Button(left, text='Confirm', padx=40, command=clicked)
+confirm1.pack()
+
+left.pack(side='left', expand=False, fill='both')
+right.pack(side='right', expand=True, fill='both')
+
+root.mainloop()
